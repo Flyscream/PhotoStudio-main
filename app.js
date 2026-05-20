@@ -1,9 +1,9 @@
 /* =============================================
-   APP.JS — PhotoStudio (Version Native Ultra)
+   APP.JS — PhotoStudio (Mobile Optimisé)
    =============================================
    ⚙️  PARAMÈTRES
    ============================================= */
-const ACCESS_CODE = '1837'; // ← Code d'accès
+const ACCESS_CODE = '1837'; 
 
 /* =============================================
    ÉTAT GLOBAL
@@ -13,8 +13,6 @@ let currentImage  = null;
 let rotation      = 0;
 let flipH         = false;
 let flipV         = false;
-let targetWidth   = null;
-let targetHeight  = null;
 let orientation   = 'portrait';
 
 const canvas      = document.getElementById('mainCanvas');
@@ -205,44 +203,16 @@ function openInEditor(id) {
     currentImage = img;
     document.getElementById('canvasPlaceholder').style.display = 'none';
     canvas.style.display = 'block';
-    applyResolution();
-    showSection('editor');
+    
+    // Gérer l'orientation initiale automatique
+    if (img.naturalWidth > img.naturalHeight) orientation = 'landscape';
+    else orientation = 'portrait';
+    document.getElementById('btnPortrait') .classList.toggle('active', orientation === 'portrait');
+    document.getElementById('btnLandscape').classList.toggle('active', orientation === 'landscape');
+    
+    redraw();
   };
   img.src = photo.src;
-}
-
-/* ------ Résolution & Auto-Amélioration ------ */
-function applyResolution() {
-  if (!currentImage) return;
-  const sel = document.getElementById('resolutionSelect').value;
-  let w = currentImage.naturalWidth;
-  let h = currentImage.naturalHeight;
-
-  if (sel !== 'original') {
-    const [rw, rh] = sel.split('x').map(Number);
-    if (orientation === 'landscape') {
-      w = Math.max(rw, rh); h = Math.min(rw, rh);
-    } else {
-      w = Math.min(rw, rh); h = Math.max(rw, rh);
-    }
-    
-    // 🔥 MAGIE ICI : Si on agrandit l'image (2K / 4K), on augmente automatiquement la netteté !
-    if (w > currentImage.naturalWidth) {
-      const sharpInput = document.getElementById('sharpness');
-      if (+sharpInput.value === 0) {
-        // Applique une netteté de 40% pour la 4K et 25% pour les autres pour améliorer les détails étirés
-        sharpInput.value = (sel.includes('3840') || sel.includes('2560')) ? 40 : 25;
-        updateFilterLabels();
-      }
-    }
-  } else {
-    if (orientation === 'landscape' && w < h) { [w,h] = [h,w]; }
-    if (orientation === 'portrait'  && w > h) { [w,h] = [h,w]; }
-  }
-  
-  targetWidth = w; targetHeight = h;
-  redraw();
-  document.getElementById('canvasInfo').textContent = `${w} × ${h} px`;
 }
 
 /* ------ Orientation ------ */
@@ -250,7 +220,7 @@ function setOrientation(mode) {
   orientation = mode;
   document.getElementById('btnPortrait') .classList.toggle('active', mode === 'portrait');
   document.getElementById('btnLandscape').classList.toggle('active', mode === 'landscape');
-  applyResolution();
+  redraw();
 }
 
 /* ------ Rotation & Miroir ------ */
@@ -271,7 +241,7 @@ function applyFilters() {
 }
 
 function updateFilterLabels() {
-  ['brightness','contrast','saturation','sharpness','blur','hue','sepia','grayscale','invert'].forEach(id => {
+  ['scale','brightness','contrast','saturation','sharpness','blur','hue','sepia','grayscale','invert'].forEach(id => {
     const val = document.getElementById(id).value;
     const label = document.getElementById('val' + id.charAt(0).toUpperCase() + id.slice(1));
     if (label) label.textContent = val;
@@ -279,7 +249,7 @@ function updateFilterLabels() {
 }
 
 function resetFilters() {
-  const defaults = {brightness:0, contrast:0, saturation:0, sharpness:0, blur:0, hue:0, sepia:0, grayscale:0, invert:0};
+  const defaults = {scale:100, brightness:0, contrast:0, saturation:0, sharpness:0, blur:0, hue:0, sepia:0, grayscale:0, invert:0};
   Object.entries(defaults).forEach(([id, val]) => {
     const el = document.getElementById(id);
     if (el) el.value = val;
@@ -319,7 +289,6 @@ function applySharpen(context, w, h, amount) {
   const mix = amount / 100; 
   const w4 = w * 4;
   
-  // Matrice de convolution pour rendre l'image "croustillante" et récupérer les détails
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = y * w4 + x * 4;
@@ -337,15 +306,41 @@ function applySharpen(context, w, h, amount) {
   context.putImageData(imgData, 0, 0);
 }
 
-/* ------ Dessin principal (Prévisualisation) ------ */
+/* ------ Calcul de la taille finale ------ */
+function getTargetDimensions() {
+  const scale = (+document.getElementById('scale').value) / 100;
+  let w = currentImage.naturalWidth * scale;
+  let h = currentImage.naturalHeight * scale;
+
+  if (orientation === 'landscape' && w < h) { [w,h] = [h,w]; }
+  if (orientation === 'portrait'  && w > h) { [w,h] = [h,w]; }
+
+  return { w: Math.round(w), h: Math.round(h) };
+}
+
+/* ------ Dessin principal (Prévisualisation Mobile-Friendly) ------ */
 function redraw() {
   if (!currentImage) return;
-  const w = targetWidth  || currentImage.naturalWidth;
-  const h = targetHeight || currentImage.naturalHeight;
+  
+  const target = getTargetDimensions();
+  document.getElementById('canvasInfo').textContent = `${target.w} × ${target.h} px`;
+
+  // 🛡️ PROTECTION ANTI-CRASH MOBILE 🛡️
+  // Si l'image est énorme (ex: 4000px), on limite la taille *uniquement* pour l'affichage en direct
+  // (Le vrai export de téléchargement se fera à la vraie taille)
+  const MAX_PREVIEW_SIZE = window.innerWidth < 600 ? 1000 : 1600; 
+  let drawW = target.w;
+  let drawH = target.h;
+  
+  if (drawW > MAX_PREVIEW_SIZE || drawH > MAX_PREVIEW_SIZE) {
+    const ratio = Math.min(MAX_PREVIEW_SIZE / drawW, MAX_PREVIEW_SIZE / drawH);
+    drawW = Math.round(drawW * ratio);
+    drawH = Math.round(drawH * ratio);
+  }
 
   const swap = rotation === 90 || rotation === 270;
-  canvas.width  = swap ? h : w;
-  canvas.height = swap ? w : h;
+  canvas.width  = swap ? drawH : drawW;
+  canvas.height = swap ? drawW : drawH;
 
   ctx.save();
   ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -355,55 +350,69 @@ function redraw() {
   
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  
-  // Utilise le moteur natif du navigateur pour tous les filtres sauf la netteté
   ctx.filter = buildCSSFilter();
   
-  ctx.drawImage(currentImage, -w/2, -h/2, w, h);
+  ctx.drawImage(currentImage, -drawW/2, -drawH/2, drawW, drawH);
   ctx.restore();
 
-  // Applique la netteté mathématique si le curseur n'est pas à zéro
   const sharpness = +document.getElementById('sharpness').value;
   if (sharpness > 0) {
+    // Comme l'image est réduite pour la preview, ça ne fera pas planter le téléphone
     applySharpen(ctx, canvas.width, canvas.height, sharpness);
   }
 }
 
-/* ------ Téléchargement ------ */
+/* ------ Téléchargement (Haute Qualité) ------ */
 function downloadImage() {
   if (!currentImage) { alert('Aucune image chargée.'); return; }
-  const w = targetWidth  || currentImage.naturalWidth;
-  const h = targetHeight || currentImage.naturalHeight;
-  const swap = rotation === 90 || rotation === 270;
-
-  exportCvs.width  = swap ? h : w;
-  exportCvs.height = swap ? w : h;
-
-  exportCtx.save();
-  exportCtx.translate(exportCvs.width/2, exportCvs.height/2);
-  exportCtx.rotate((rotation * Math.PI) / 180);
-  if (flipH) exportCtx.scale(-1, 1);
-  if (flipV) exportCtx.scale(1, -1);
   
-  exportCtx.imageSmoothingEnabled = true;
-  exportCtx.imageSmoothingQuality = 'high';
+  const btn = document.getElementById('btnDownload');
+  const originalText = btn.innerHTML;
   
-  // Filtres natifs (ultra rapide)
-  exportCtx.filter = buildCSSFilter();
+  // On change le texte pour avertir l'utilisateur que le calcul est lourd
+  btn.innerHTML = '⏳ Traitement en cours...';
+  btn.disabled = true;
 
-  exportCtx.drawImage(currentImage, -w/2, -h/2, w, h);
-  exportCtx.restore();
+  // Le setTimeout permet au navigateur d'afficher le texte "⏳ Traitement..." 
+  // AVANT que le téléphone ne gèle pendant le calcul de l'image 4K
+  setTimeout(() => {
+    try {
+      const target = getTargetDimensions();
+      const swap = rotation === 90 || rotation === 270;
 
-  // Netteté appliquée directement sur le fichier final
-  const sharpness = +document.getElementById('sharpness').value;
-  if (sharpness > 0) {
-    applySharpen(exportCtx, exportCvs.width, exportCvs.height, sharpness);
-  }
+      exportCvs.width  = swap ? target.h : target.w;
+      exportCvs.height = swap ? target.w : target.h;
 
-  const link = document.createElement('a');
-  link.download = 'photostudio_export.png';
-  link.href = exportCvs.toDataURL('image/png', 1.0); // 1.0 force la qualité max
-  link.click();
+      exportCtx.save();
+      exportCtx.translate(exportCvs.width/2, exportCvs.height/2);
+      exportCtx.rotate((rotation * Math.PI) / 180);
+      if (flipH) exportCtx.scale(-1, 1);
+      if (flipV) exportCtx.scale(1, -1);
+      
+      exportCtx.imageSmoothingEnabled = true;
+      exportCtx.imageSmoothingQuality = 'high';
+      exportCtx.filter = buildCSSFilter();
+
+      exportCtx.drawImage(currentImage, -target.w/2, -target.h/2, target.w, target.h);
+      exportCtx.restore();
+
+      const sharpness = +document.getElementById('sharpness').value;
+      if (sharpness > 0) {
+        applySharpen(exportCtx, exportCvs.width, exportCvs.height, sharpness);
+      }
+
+      const link = document.createElement('a');
+      link.download = 'photostudio_export.png';
+      link.href = exportCvs.toDataURL('image/png', 1.0);
+      link.click();
+      
+    } catch (e) {
+      alert("Erreur: Votre appareil n'a pas assez de mémoire pour exporter à cette taille.");
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  }, 100);
 }
 
 /* =============================================

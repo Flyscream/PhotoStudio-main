@@ -10,7 +10,6 @@
 </head>
 <body>
 
-  <!-- ============ PAGE MOT DE PASSE ============ -->
   <div id="lockScreen" class="lock-screen">
     <div class="lock-bg"></div>
     <div class="lock-card">
@@ -33,10 +32,8 @@
     </div>
   </div>
 
-  <!-- ============ APP PRINCIPALE ============ -->
   <div id="app" class="app hidden">
 
-    <!-- HEADER -->
     <header class="header">
       <div class="logo">
         <span class="logo-icon">◈</span>
@@ -61,7 +58,6 @@
       </button>
     </header>
 
-    <!-- ============ SECTION UPLOAD ============ -->
     <section id="sectionUpload" class="section active">
       <div class="upload-hero">
         <h2 class="section-title">Importez vos photos</h2>
@@ -85,7 +81,6 @@
       <div id="uploadPreview" class="upload-preview-grid"></div>
     </section>
 
-    <!-- ============ SECTION GALERIE ============ -->
     <section id="sectionGallery" class="section">
       <div class="gallery-header">
         <h2 class="section-title">Mon Album</h2>
@@ -102,14 +97,11 @@
       </div>
     </section>
 
-    <!-- ============ SECTION ÉDITEUR ============ -->
     <section id="sectionEditor" class="section">
       <div class="editor-layout">
 
-        <!-- Canvas zone -->
         <div class="editor-canvas-wrap">
           <div class="canvas-toolbar">
-            <!-- Orientation -->
             <div class="toolbar-group">
               <span class="toolbar-label">Orientation</span>
               <button class="tool-btn active" id="btnPortrait" onclick="setOrientation('portrait')" title="Portrait">
@@ -119,20 +111,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>
               </button>
             </div>
-            <!-- Résolution -->
-            <div class="toolbar-group">
-              <span class="toolbar-label">Résolution</span>
-              <select id="resolutionSelect" class="tool-select" onchange="applyResolution()">
-                <option value="original">Original</option>
-                <option value="3840x2160">4K (3840×2160)</option>
-                <option value="2560x1440">2K (2560×1440)</option>
-                <option value="1920x1080">Full HD (1920×1080)</option>
-                <option value="1280x720">HD (1280×720)</option>
-                <option value="800x600">800×600</option>
-                <option value="640x480">640×480</option>
-              </select>
-            </div>
-            <!-- Actions -->
+            
             <div class="toolbar-group ml-auto">
               <button class="tool-btn accent" onclick="resetFilters()" title="Réinitialiser">↺</button>
               <button class="tool-btn accent" onclick="downloadImage()" title="Télécharger">
@@ -149,10 +128,20 @@
           <div class="canvas-info" id="canvasInfo"></div>
         </div>
 
-        <!-- Panneau de réglages -->
         <aside class="editor-panel">
           <h3 class="panel-title">Réglages</h3>
+          
+          <div class="filter-group">
+            <label>Agrandissement <span id="valScale">100</span>%</label>
+            <input type="range" id="scale" min="10" max="400" value="100" step="10" oninput="applyFilters()" />
+          </div>
 
+          <div class="panel-divider"></div>
+
+          <div class="filter-group">
+            <label>Netteté <span id="valSharpness">0</span></label>
+            <input type="range" id="sharpness" min="0" max="100" value="0" oninput="applyFilters()" />
+          </div>
           <div class="filter-group">
             <label>Luminosité <span id="valBrightness">0</span></label>
             <input type="range" id="brightness" min="-100" max="100" value="0" oninput="applyFilters()" />
@@ -164,10 +153,6 @@
           <div class="filter-group">
             <label>Saturation <span id="valSaturation">0</span></label>
             <input type="range" id="saturation" min="-100" max="100" value="0" oninput="applyFilters()" />
-          </div>
-          <div class="filter-group">
-            <label>Netteté <span id="valSharpness">0</span></label>
-            <input type="range" id="sharpness" min="0" max="100" value="0" oninput="applyFilters()" />
           </div>
           <div class="filter-group">
             <label>Flou <span id="valBlur">0</span>px</label>
@@ -200,7 +185,7 @@
           </div>
 
           <div class="panel-divider"></div>
-          <button class="download-btn" onclick="downloadImage()">
+          <button class="download-btn" id="btnDownload" onclick="downloadImage()">
             ↓ Télécharger
           </button>
         </aside>
@@ -209,9 +194,8 @@
 
   </div>
 
-  <!-- Canvas caché pour export -->
   <canvas id="exportCanvas" style="display:none"></canvas>
 
-<script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
