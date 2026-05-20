@@ -1,10 +1,9 @@
 /* =============================================
-   APP.JS — PhotoStudio
+   APP.JS — PhotoStudio (Version Native Ultra)
    =============================================
    ⚙️  PARAMÈTRES
    ============================================= */
-const ACCESS_CODE = '1837';
-const AI_API_KEY = '4dbd8756-0a5a-4c5c-a747-586d7d971009'; // Ta clé API
+const ACCESS_CODE = '1837'; // ← Code d'accès
 
 /* =============================================
    ÉTAT GLOBAL
@@ -89,12 +88,11 @@ function showSection(name) {
 }
 
 /* =============================================
-   UPLOAD & FICHIERS (CORRIGÉ: CLICS & MOBILE)
+   UPLOAD & FICHIERS
    ============================================= */
 const dropZone  = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 
-// Évite le double-clic (conflit entre le label et la div)
 dropZone.addEventListener('click', (e) => {
   if (e.target.tagName === 'LABEL' || e.target.tagName === 'INPUT') return;
   fileInput.click();
@@ -110,7 +108,6 @@ dropZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
 
 function handleFiles(files) {
-  // Prise en charge des formats mobiles récents comme .heic
   const valid = files.filter(f => 
     f.type.startsWith('image/') || 
     f.name.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i)
@@ -204,7 +201,7 @@ function openInEditor(id) {
   rotation = 0; flipH = false; flipV = false;
 
   const img = new Image();
-  img.crossOrigin = "Anonymous";
+  // Suppression du crossOrigin qui posait problème sur certains navigateurs sans API externe
   img.onload = () => {
     currentImage = img;
     document.getElementById('canvasPlaceholder').style.display = 'none';
@@ -215,7 +212,7 @@ function openInEditor(id) {
   img.src = photo.src;
 }
 
-/* ------ Résolution ------ */
+/* ------ Résolution & Auto-Amélioration ------ */
 function applyResolution() {
   if (!currentImage) return;
   const sel = document.getElementById('resolutionSelect').value;
@@ -224,16 +221,26 @@ function applyResolution() {
 
   if (sel !== 'original') {
     const [rw, rh] = sel.split('x').map(Number);
-    const ratio = w / h;
     if (orientation === 'landscape') {
       w = Math.max(rw, rh); h = Math.min(rw, rh);
     } else {
       w = Math.min(rw, rh); h = Math.max(rw, rh);
     }
+    
+    // 🔥 MAGIE ICI : Si on agrandit l'image (2K / 4K), on augmente automatiquement la netteté !
+    if (w > currentImage.naturalWidth) {
+      const sharpInput = document.getElementById('sharpness');
+      if (+sharpInput.value === 0) {
+        // Applique une netteté de 40% pour la 4K/2K pour améliorer les détails étirés
+        sharpInput.value = (sel.includes('3840') || sel.includes('2560')) ? 40 : 25;
+        updateFilterLabels();
+      }
+    }
   } else {
     if (orientation === 'landscape' && w < h) { [w,h] = [h,w]; }
     if (orientation === 'portrait'  && w > h) { [w,h] = [h,w]; }
   }
+  
   targetWidth = w; targetHeight = h;
   redraw();
   document.getElementById('canvasInfo').textContent = `${w} × ${h} px`;
@@ -282,31 +289,6 @@ function resetFilters() {
   if (currentImage) redraw();
 }
 
-/* ------ Dessin principal ------ */
-function redraw() {
-  if (!currentImage) return;
-  const w = targetWidth  || currentImage.naturalWidth;
-  const h = targetHeight || currentImage.naturalHeight;
-
-  const swap = rotation === 90 || rotation === 270;
-  canvas.width  = swap ? h : w;
-  canvas.height = swap ? w : h;
-
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((rotation * Math.PI) / 180);
-  if (flipH) ctx.scale(-1, 1);
-  if (flipV) ctx.scale(1, -1);
-  
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  
-  ctx.drawImage(currentImage, -w/2, -h/2, w, h);
-  ctx.restore();
-
-  canvas.style.filter = buildCSSFilter();
-}
-
 function buildCSSFilter() {
   const b  = +document.getElementById('brightness').value;
   const c  = +document.getElementById('contrast').value;
@@ -329,58 +311,62 @@ function buildCSSFilter() {
   ].join(' ');
 }
 
-/* =============================================
-   INTÉGRATION IA (CORRIGÉE: NE TOURNE PLUS DANS LE VIDE)
-   ============================================= */
-async function upscaleImageWithAI() {
-  if (!currentImage) return;
+/* ------ Algorithme de Netteté (Sharpness) ------ */
+function applySharpen(context, w, h, amount) {
+  if (amount <= 0) return;
+  const imgData = context.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  const buff = new Uint8ClampedArray(data);
+  const mix = amount / 100; 
+  const w4 = w * 4;
   
-  const btn = document.getElementById('btnAiUpscale');
-  if(btn) btn.textContent = '⏳ Traitement...';
-  
-  try {
-    exportCvs.width = currentImage.naturalWidth;
-    exportCvs.height = currentImage.naturalHeight;
-    exportCtx.clearRect(0, 0, exportCvs.width, exportCvs.height);
-    exportCtx.drawImage(currentImage, 0, 0);
-    
-    // On force le code à attendre que l'image soit bien transformée en fichier
-    const blob = await new Promise((resolve, reject) => {
-      exportCvs.toBlob((b) => {
-        if(b) resolve(b);
-        else reject(new Error("Impossible de préparer l'image."));
-      }, 'image/jpeg', 0.9);
-    });
-      
-    const formData = new FormData();
-    formData.append('image', blob);
-    
-    const response = await fetch('https://api.deepai.org/api/torch-srgan', {
-      method: 'POST',
-      headers: { 'api-key': AI_API_KEY },
-      body: formData
-    });
-    
-    const data = await response.json();
-    
-    if (data.output_url) {
-      const newImg = new Image();
-      newImg.crossOrigin = "Anonymous";
-      newImg.onload = () => {
-        currentImage = newImg;
-        applyResolution(); // Met à jour l'image avec la version haute qualité
-        if(btn) btn.textContent = '✨ Amélioré !';
-        setTimeout(() => { if(btn) btn.textContent = '✨ IA Upscale'; }, 3000);
-      };
-      newImg.onerror = () => { throw new Error("Le navigateur a bloqué la nouvelle image."); };
-      newImg.src = data.output_url;
-    } else {
-      throw new Error(data.err || data.error || "L'API a retourné une erreur inconnue.");
+  // Matrice de convolution pour rendre l'image "croustillante" et récupérer les détails
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w4 + x * 4;
+      for (let c = 0; c < 3; c++) {
+        const val = 5 * buff[i + c]
+                  - buff[i - w4 + c] 
+                  - buff[i + w4 + c] 
+                  - buff[i - 4 + c]  
+                  - buff[i + 4 + c]; 
+        
+        data[i + c] = buff[i + c] + mix * (val - buff[i + c]);
+      }
     }
-  } catch (err) {
-    console.error(err);
-    alert("Erreur IA : " + err.message);
-    if(btn) btn.textContent = '✨ IA Upscale';
+  }
+  context.putImageData(imgData, 0, 0);
+}
+
+/* ------ Dessin principal (Prévisualisation) ------ */
+function redraw() {
+  if (!currentImage) return;
+  const w = targetWidth  || currentImage.naturalWidth;
+  const h = targetHeight || currentImage.naturalHeight;
+
+  const swap = rotation === 90 || rotation === 270;
+  canvas.width  = swap ? h : w;
+  canvas.height = swap ? w : h;
+
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((rotation * Math.PI) / 180);
+  if (flipH) ctx.scale(-1, 1);
+  if (flipV) ctx.scale(1, -1);
+  
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  
+  // Utilise le moteur natif du navigateur pour tous les filtres sauf la netteté
+  ctx.filter = buildCSSFilter();
+  
+  ctx.drawImage(currentImage, -w/2, -h/2, w, h);
+  ctx.restore();
+
+  // Applique la netteté mathématique si le curseur n'est pas à zéro
+  const sharpness = +document.getElementById('sharpness').value;
+  if (sharpness > 0) {
+    applySharpen(ctx, canvas.width, canvas.height, sharpness);
   }
 }
 
@@ -403,70 +389,22 @@ function downloadImage() {
   exportCtx.imageSmoothingEnabled = true;
   exportCtx.imageSmoothingQuality = 'high';
   
+  // Filtres natifs (ultra rapide)
+  exportCtx.filter = buildCSSFilter();
+
   exportCtx.drawImage(currentImage, -w/2, -h/2, w, h);
   exportCtx.restore();
 
-  applyCanvasFilters(exportCtx, exportCvs.width, exportCvs.height);
+  // Netteté appliquée directement sur le fichier final
+  const sharpness = +document.getElementById('sharpness').value;
+  if (sharpness > 0) {
+    applySharpen(exportCtx, exportCvs.width, exportCvs.height, sharpness);
+  }
 
   const link = document.createElement('a');
   link.download = 'photostudio_export.png';
-  link.href = exportCvs.toDataURL('image/png');
+  link.href = exportCvs.toDataURL('image/png', 1.0); // 1.0 force la qualité max
   link.click();
-}
-
-function applyCanvasFilters(ctx2, w, h) {
-  const b  = +document.getElementById('brightness').value;
-  const c  = +document.getElementById('contrast').value;
-  const s  = +document.getElementById('saturation').value;
-  const sp = +document.getElementById('sepia').value;
-  const gs = +document.getElementById('grayscale').value;
-  const iv = +document.getElementById('invert').value;
-
-  if (!b && !c && !s && !sp && !gs && !iv) return; 
-
-  const imgData = ctx2.getImageData(0, 0, w, h);
-  const d = imgData.data;
-
-  for (let i = 0; i < d.length; i += 4) {
-    let r = d[i], g = d[i+1], bi2 = d[i+2];
-
-    r += b * 2.55; g += b * 2.55; bi2 += b * 2.55;
-
-    const cf = (259 * (c + 255)) / (255 * (259 - c));
-    r  = cf * (r  - 128) + 128;
-    g  = cf * (g  - 128) + 128;
-    bi2= cf * (bi2- 128) + 128;
-
-    if (gs > 0) {
-      const gray = 0.299*r + 0.587*g + 0.114*bi2;
-      const gf = gs/100;
-      r  = r  + (gray - r)  * gf;
-      g  = g  + (gray - g)  * gf;
-      bi2= bi2+ (gray - bi2)* gf;
-    }
-
-    if (sp > 0) {
-      const sf = sp/100;
-      const sr = 0.393*r + 0.769*g + 0.189*bi2;
-      const sg = 0.349*r + 0.686*g + 0.168*bi2;
-      const sb = 0.272*r + 0.534*g + 0.131*bi2;
-      r  = r  + (sr - r)  * sf;
-      g  = g  + (sg - g)  * sf;
-      bi2= bi2+ (sb - bi2)* sf;
-    }
-
-    if (iv > 0) {
-      const ivf = iv/100;
-      r  = r  + (255-r  *2) * ivf;
-      g  = g  + (255-g  *2) * ivf;
-      bi2= bi2+ (255-bi2*2) * ivf;
-    }
-
-    d[i]   = Math.min(255, Math.max(0, r));
-    d[i+1] = Math.min(255, Math.max(0, g));
-    d[i+2] = Math.min(255, Math.max(0, bi2));
-  }
-  ctx2.putImageData(imgData, 0, 0);
 }
 
 /* =============================================
@@ -474,19 +412,3 @@ function applyCanvasFilters(ctx2, w, h) {
    ============================================= */
 updateEditorAccess();
 updateFilterLabels();
-
-// Injection dynamique du bouton IA à côté des résolutions
-document.addEventListener('DOMContentLoaded', () => {
-  const resGroup = document.querySelector('#resolutionSelect').parentElement;
-  if(resGroup) {
-    const aiBtn = document.createElement('button');
-    aiBtn.id = 'btnAiUpscale';
-    aiBtn.className = 'tool-btn accent';
-    aiBtn.style.width = 'auto';
-    aiBtn.style.padding = '0 10px';
-    aiBtn.style.marginLeft = '10px';
-    aiBtn.textContent = '✨ IA Upscale';
-    aiBtn.onclick = upscaleImageWithAI;
-    resGroup.appendChild(aiBtn);
-  }
-});
