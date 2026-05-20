@@ -3,15 +3,14 @@
    =============================================
    ⚙️  PARAMÈTRES
    ============================================= */
-const ACCESS_CODE = '1837';   // ← Code d'accès de l'application
-const AI_API_KEY = '4dbd8756-0a5a-4c5c-a747-586d7d971009'; // ← INSÈRE TA CLÉ DEEPAI ICI
+const ACCESS_CODE = '1837';
+const AI_API_KEY = '4dbd8756-0a5a-4c5c-a747-586d7d971009'; // Ta clé API
 
 /* =============================================
    ÉTAT GLOBAL
    ============================================= */
-// Le localStorage est désactivé pour éviter de saturer la mémoire du téléphone
 let photos        = [];
-let currentImage  = null;   // HTMLImageElement chargée
+let currentImage  = null;   
 let rotation      = 0;
 let flipH         = false;
 let flipV         = false;
@@ -32,7 +31,6 @@ const exportCtx   = exportCvs.getContext('2d');
   const unlockBtn= document.getElementById('unlockBtn');
   const errorEl  = document.getElementById('pinError');
 
-  // Auto-focus & auto-advance
   digits.forEach((d, i) => {
     d.addEventListener('input', () => {
       d.value = d.value.replace(/\D/g, '').slice(-1);
@@ -91,12 +89,17 @@ function showSection(name) {
 }
 
 /* =============================================
-   UPLOAD & FICHIERS (CORRIGÉ POUR MOBILE)
+   UPLOAD & FICHIERS (CORRIGÉ: CLICS & MOBILE)
    ============================================= */
 const dropZone  = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 
-dropZone.addEventListener('click',      () => fileInput.click());
+// Évite le double-clic (conflit entre le label et la div)
+dropZone.addEventListener('click', (e) => {
+  if (e.target.tagName === 'LABEL' || e.target.tagName === 'INPUT') return;
+  fileInput.click();
+});
+
 dropZone.addEventListener('dragover',   e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave',  ()=> dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
@@ -107,9 +110,13 @@ dropZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
 
 function handleFiles(files) {
-  const valid = files.filter(f => f.type.startsWith('image/'));
+  // Prise en charge des formats mobiles récents comme .heic
+  const valid = files.filter(f => 
+    f.type.startsWith('image/') || 
+    f.name.match(/\.(jpg|jpeg|png|webp|heic|heif)$/i)
+  );
+
   valid.forEach(file => {
-    // Utilisation de URL.createObjectURL : instantané et ne sature pas la RAM du téléphone
     const src = URL.createObjectURL(file);
     const id = 'photo_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     
@@ -197,7 +204,7 @@ function openInEditor(id) {
   rotation = 0; flipH = false; flipV = false;
 
   const img = new Image();
-  img.crossOrigin = "Anonymous"; // Requis pour éviter les erreurs CORS avec l'API
+  img.crossOrigin = "Anonymous";
   img.onload = () => {
     currentImage = img;
     document.getElementById('canvasPlaceholder').style.display = 'none';
@@ -275,7 +282,7 @@ function resetFilters() {
   if (currentImage) redraw();
 }
 
-/* ------ Dessin principal (CORRIGÉ POUR LE LISSAGE) ------ */
+/* ------ Dessin principal ------ */
 function redraw() {
   if (!currentImage) return;
   const w = targetWidth  || currentImage.naturalWidth;
@@ -291,7 +298,6 @@ function redraw() {
   if (flipH) ctx.scale(-1, 1);
   if (flipV) ctx.scale(1, -1);
   
-  // Force un lissage de haute qualité lors de l'étirement
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   
@@ -324,61 +330,61 @@ function buildCSSFilter() {
 }
 
 /* =============================================
-   INTÉGRATION IA (UPSCALE 4K)
+   INTÉGRATION IA (CORRIGÉE: NE TOURNE PLUS DANS LE VIDE)
    ============================================= */
 async function upscaleImageWithAI() {
   if (!currentImage) return;
-  if (AI_API_KEY === 'TA_CLE_API_ICI') {
-    alert("Tu dois d'abord insérer ta clé API DeepAI dans le code app.js !");
-    return;
-  }
-
+  
   const btn = document.getElementById('btnAiUpscale');
   if(btn) btn.textContent = '⏳ Traitement...';
   
   try {
-    // 1. Dessiner l'image originale non modifiée
     exportCvs.width = currentImage.naturalWidth;
     exportCvs.height = currentImage.naturalHeight;
+    exportCtx.clearRect(0, 0, exportCvs.width, exportCvs.height);
     exportCtx.drawImage(currentImage, 0, 0);
     
-    // 2. Convertir en format fichier (Blob) pour l'envoyer
-    exportCvs.toBlob(async (blob) => {
-      const formData = new FormData();
-      formData.append('image', blob);
+    // On force le code à attendre que l'image soit bien transformée en fichier
+    const blob = await new Promise((resolve, reject) => {
+      exportCvs.toBlob((b) => {
+        if(b) resolve(b);
+        else reject(new Error("Impossible de préparer l'image."));
+      }, 'image/jpeg', 0.9);
+    });
       
-      // 3. Appel à l'API DeepAI Super Resolution
-      const response = await fetch('https://api.deepai.org/api/torch-srgan', {
-        method: 'POST',
-        headers: { 'api-key': AI_API_KEY },
-        body: formData
-      });
-      
-      const data = await response.json();
-      
-      if (data.output_url) {
-        // 4. Remplacer l'image par la version améliorée
-        const newImg = new Image();
-        newImg.crossOrigin = "Anonymous";
-        newImg.onload = () => {
-          currentImage = newImg;
-          applyResolution(); 
-          if(btn) btn.textContent = '✨ Amélioré !';
-          setTimeout(() => btn.textContent = '✨ IA Upscale', 3000);
-        };
-        newImg.src = data.output_url;
-      } else {
-        throw new Error(data.err || "Erreur de l'API");
-      }
-    }, 'image/jpeg', 0.9);
+    const formData = new FormData();
+    formData.append('image', blob);
     
+    const response = await fetch('https://api.deepai.org/api/torch-srgan', {
+      method: 'POST',
+      headers: { 'api-key': AI_API_KEY },
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (data.output_url) {
+      const newImg = new Image();
+      newImg.crossOrigin = "Anonymous";
+      newImg.onload = () => {
+        currentImage = newImg;
+        applyResolution(); // Met à jour l'image avec la version haute qualité
+        if(btn) btn.textContent = '✨ Amélioré !';
+        setTimeout(() => { if(btn) btn.textContent = '✨ IA Upscale'; }, 3000);
+      };
+      newImg.onerror = () => { throw new Error("Le navigateur a bloqué la nouvelle image."); };
+      newImg.src = data.output_url;
+    } else {
+      throw new Error(data.err || data.error || "L'API a retourné une erreur inconnue.");
+    }
   } catch (err) {
-    alert("Erreur lors de l'amélioration IA : " + err.message);
+    console.error(err);
+    alert("Erreur IA : " + err.message);
     if(btn) btn.textContent = '✨ IA Upscale';
   }
 }
 
-/* ------ Téléchargement (CORRIGÉ POUR LE LISSAGE) ------ */
+/* ------ Téléchargement ------ */
 function downloadImage() {
   if (!currentImage) { alert('Aucune image chargée.'); return; }
   const w = targetWidth  || currentImage.naturalWidth;
