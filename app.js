@@ -201,7 +201,6 @@ function openInEditor(id) {
   rotation = 0; flipH = false; flipV = false;
 
   const img = new Image();
-  // Suppression du crossOrigin qui posait problème sur certains navigateurs sans API externe
   img.onload = () => {
     currentImage = img;
     document.getElementById('canvasPlaceholder').style.display = 'none';
@@ -231,7 +230,7 @@ function applyResolution() {
     if (w > currentImage.naturalWidth) {
       const sharpInput = document.getElementById('sharpness');
       if (+sharpInput.value === 0) {
-        // Applique une netteté de 40% pour la 4K/2K pour améliorer les détails étirés
+        // Applique une netteté de 40% pour la 4K et 25% pour les autres pour améliorer les détails étirés
         sharpInput.value = (sel.includes('3840') || sel.includes('2560')) ? 40 : 25;
         updateFilterLabels();
       }
