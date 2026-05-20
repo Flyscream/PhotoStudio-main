@@ -111,10 +111,20 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>
               </button>
             </div>
-            
+            <div class="toolbar-group">
+              <span class="toolbar-label">Résolution</span>
+              <select id="resolutionSelect" class="tool-select" onchange="applyResolution()">
+                <option value="original">Original</option>
+                <option value="16384x9216">16K (16384×9216)</option>
+                <option value="3840x2160">4K (3840×2160)</option>
+                <option value="2560x1440">2K (2560×1440)</option>
+                <option value="1920x1080">Full HD (1920×1080)</option>
+                <option value="1280x720">HD (1280×720)</option>
+              </select>
+            </div>
             <div class="toolbar-group ml-auto">
               <button class="tool-btn accent" onclick="resetFilters()" title="Réinitialiser">↺</button>
-              <button class="tool-btn accent" onclick="downloadImage()" title="Télécharger">
+              <button class="tool-btn accent" id="btnDownload" onclick="downloadImage()" title="Télécharger">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </button>
             </div>
@@ -130,18 +140,14 @@
 
         <aside class="editor-panel">
           <h3 class="panel-title">Réglages</h3>
-          
+
           <div class="filter-group">
-            <label>Agrandissement <span id="valScale">100</span>%</label>
-            <input type="range" id="scale" min="10" max="400" value="100" step="10" oninput="applyFilters()" />
+            <label>Netteté (Matrice) <span id="valSharpness">0</span></label>
+            <input type="range" id="sharpness" min="0" max="100" value="0" oninput="applyFilters()" />
           </div>
 
           <div class="panel-divider"></div>
 
-          <div class="filter-group">
-            <label>Netteté <span id="valSharpness">0</span></label>
-            <input type="range" id="sharpness" min="0" max="100" value="0" oninput="applyFilters()" />
-          </div>
           <div class="filter-group">
             <label>Luminosité <span id="valBrightness">0</span></label>
             <input type="range" id="brightness" min="-100" max="100" value="0" oninput="applyFilters()" />
@@ -154,6 +160,7 @@
             <label>Saturation <span id="valSaturation">0</span></label>
             <input type="range" id="saturation" min="-100" max="100" value="0" oninput="applyFilters()" />
           </div>
+          
           <div class="filter-group">
             <label>Flou <span id="valBlur">0</span>px</label>
             <input type="range" id="blur" min="0" max="20" value="0" oninput="applyFilters()" />
@@ -185,7 +192,7 @@
           </div>
 
           <div class="panel-divider"></div>
-          <button class="download-btn" id="btnDownload" onclick="downloadImage()">
+          <button class="download-btn" onclick="downloadImage()">
             ↓ Télécharger
           </button>
         </aside>
@@ -196,6 +203,6 @@
 
   <canvas id="exportCanvas" style="display:none"></canvas>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=final_hope"></script>
 </body>
 </html>
