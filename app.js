@@ -1,5 +1,5 @@
 /* =============================================
-   APP.JS — PhotoStudio (Native Ultra - Final Fix)
+   APP.JS — PhotoStudio (Logique d'Upscaling Inversée)
    =============================================
    ⚙️  PARAMÈTRES
    ============================================= */
@@ -193,7 +193,6 @@ function clearGallery() {
 /* =============================================
    ÉDITEUR
    ============================================= */
-// CORRECTION : La fonction est réparée et robuste
 function openInEditor(id) {
   const photo = photos.find(p => p.id === id);
   if (!photo) return;
@@ -207,22 +206,18 @@ function openInEditor(id) {
     document.getElementById('canvasPlaceholder').style.display = 'none';
     canvas.style.display = 'block';
     
-    // Auto-détection orientation
     if (img.naturalWidth > img.naturalHeight) orientation = 'landscape';
     else orientation = 'portrait';
     document.getElementById('btnPortrait') .classList.toggle('active', orientation === 'portrait');
     document.getElementById('btnLandscape').classList.toggle('active', orientation === 'landscape');
     
-    document.getElementById('resolutionSelect').value = 'original'; // Reset dropdown
-    
+    document.getElementById('resolutionSelect').value = 'original'; 
     applyResolution();
     showSection('editor');
   };
   img.src = photo.src;
 }
 
-/* ------ Résolution & Auto-Amélioration ------ */
-// CORRECTION : La 16K est gérée, et l'upscaling active la netteté automatique
 function applyResolution() {
   if (!currentImage) return;
   const sel = document.getElementById('resolutionSelect').value;
@@ -242,12 +237,10 @@ function applyResolution() {
   }
   
   targetWidth = w; targetHeight = h;
-  
   redraw();
   document.getElementById('canvasInfo').textContent = `${targetWidth} × ${targetHeight} px`;
 }
 
-/* ------ Orientation ------ */
 function setOrientation(mode) {
   orientation = mode;
   document.getElementById('btnPortrait') .classList.toggle('active', mode === 'portrait');
@@ -255,7 +248,6 @@ function setOrientation(mode) {
   applyResolution();
 }
 
-/* ------ Rotation & Miroir ------ */
 function rotateImage(deg) {
   rotation = (rotation + deg + 360) % 360;
   redraw();
@@ -266,7 +258,7 @@ function flipImage(axis) {
   redraw();
 }
 
-/* ------ Filtres ------ */
+/* ------ Filtres CSS ------ */
 function applyFilters() {
   updateFilterLabels();
   redraw();
@@ -314,62 +306,56 @@ function buildCSSFilter() {
 }
 
 /* ------ Algorithme de Netteté (Matrice de Convolution) ------ */
-// CORRECTION : L'algorithme est réécrit pour être plus performant
 function applySharpen(context, w, h, amount) {
   if (amount <= 0) return;
   
-  // Limiter la netteté en preview mobile pour éviter crash
-  let effectiveAmount = amount;
-  if (context === ctx && window.innerWidth < 600 && (w > 1500 || h > 1500)) {
-      effectiveAmount = Math.min(amount, 15); // N'applique qu'un peu de netteté en preview si image géante
-  }
-
   const imgData = context.getImageData(0, 0, w, h);
   const data = imgData.data;
   const buff = new Uint8ClampedArray(data);
-  const mix = effectiveAmount / 100; 
+  const mix = amount / 100; 
   const w4 = w * 4;
   
-  // Matrice de convolution Laplacian (renforcée)
-  // [ 0, -1,  0]
-  // [-1,  5, -1]
-  // [ 0, -1,  0]
   for (let y = 1; y < h - 1; y++) {
-    const y_w4 = y * w4;
-    const y_prev_w4 = (y - 1) * w4;
-    const y_next_w4 = (y + 1) * w4;
-
     for (let x = 1; x < w - 1; x++) {
-      const i = y_w4 + x * 4;
-      const x4_prev = (x - 1) * 4;
-      const x4_next = (x + 1) * 4;
-
+      const i = y * w4 + x * 4;
       for (let c = 0; c < 3; c++) {
-        const center = buff[i + c];
-        // Calcul matrice
-        const val = 5 * center
-                  - buff[y_prev_w4 + i%w4 + c] // haut
-                  - buff[y_next_w4 + i%w4 + c] // bas
-                  - buff[y_w4 + x4_prev + c]     // gauche
-                  - buff[y_w4 + x4_next + c];    // droite
+        const val = 5 * buff[i + c]
+                  - buff[i - w4 + c] 
+                  - buff[i + w4 + c] 
+                  - buff[i - 4 + c]  
+                  - buff[i + 4 + c]; 
         
-        // Mixage original / aiguisé
-        data[i + c] = center + mix * (val - center);
+        data[i + c] = buff[i + c] + mix * (val - buff[i + c]);
       }
     }
   }
   context.putImageData(imgData, 0, 0);
 }
 
+/* ------ L'ASTUCE PRO : Créer une base nette avant d'étirer ------ */
+function getSharpenedBase(amount) {
+  // On crée un canvas virtuel à la taille ORIGINALE de la photo
+  const tempCvs = document.createElement('canvas');
+  tempCvs.width = currentImage.naturalWidth;
+  tempCvs.height = currentImage.naturalHeight;
+  const tempCtx = tempCvs.getContext('2d');
+  
+  tempCtx.drawImage(currentImage, 0, 0);
+
+  // On applique la netteté sur la petite image (très rapide, ne plante pas, ultra visible)
+  if (amount > 0) {
+    applySharpen(tempCtx, tempCvs.width, tempCvs.height, amount);
+  }
+  return tempCvs;
+}
+
 /* ------ Dessin principal (Prévisualisation) ------ */
 function redraw() {
   if (!currentImage) return;
   
-  // Protection mémoire : En preview, on ne dessine pas en 16K, c'est inutile et ça fait crasher
-  // On dessine à la taille de l'écran max, mais on garde targetWidth/Height pour l'info
   let drawW = targetWidth;
   let drawH = targetHeight;
-  const MAX_PREVIEW = 2500; // Limite raisonnable pour processeur mobile
+  const MAX_PREVIEW = 2500; 
 
   if (drawW > MAX_PREVIEW || drawH > MAX_PREVIEW) {
     const ratio = Math.min(MAX_PREVIEW / drawW, MAX_PREVIEW / drawH);
@@ -389,21 +375,18 @@ function redraw() {
   
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  
-  // Filtres CSS natifs (sauf netteté)
   ctx.filter = buildCSSFilter();
-  
-  ctx.drawImage(currentImage, -drawW/2, -drawH/2, drawW, drawH);
-  ctx.restore();
 
-  // Applique la netteté mathématique lourde en JS
+  // On récupère l'image de base aiguisée
   const sharpness = +document.getElementById('sharpness').value;
-  if (sharpness > 0) {
-    applySharpen(ctx, canvas.width, canvas.height, sharpness);
-  }
+  const baseImage = sharpness > 0 ? getSharpenedBase(sharpness) : currentImage;
+  
+  // On étire la base aiguisée
+  ctx.drawImage(baseImage, -drawW/2, -drawH/2, drawW, drawH);
+  ctx.restore();
 }
 
-/* ------ Téléchargement (Le moment de vérité pour la qualité) ------ */
+/* ------ Téléchargement ------ */
 function downloadImage() {
   if (!currentImage) { alert('Aucune image chargée.'); return; }
   
@@ -412,10 +395,9 @@ function downloadImage() {
   btn.style.opacity = 0.5;
   btn.disabled = true;
 
-  //setTimeout pour laisser le temps au bouton de changer de texte avant de figer le navigateur
   setTimeout(() => {
     const sel = document.getElementById('resolutionSelect').value;
-    const isUpscale = sel.includes('16384') || sel.includes('3840');
+    const isUpscale = sel.includes('16384') || sel.includes('3840') || sel.includes('2560');
 
     const w = targetWidth;
     const h = targetHeight;
@@ -432,30 +414,26 @@ function downloadImage() {
     
     exportCtx.imageSmoothingEnabled = true;
     exportCtx.imageSmoothingQuality = 'high';
-    
-    // Filtres natifs (rapide)
     exportCtx.filter = buildCSSFilter();
 
-    exportCtx.drawImage(currentImage, -w/2, -h/2, w, h);
-    exportCtx.restore();
-
-    // --- AMÉLIORATION DE QUALITÉ GÉANTE ---
     let sharpness = +document.getElementById('sharpness').value;
     
-    //🔥 MAGIC : Si on est en 4K/16K, on force une netteté de matrice agressive 
-    // pour compenser le flou de l'étirement, même si le curseur est à 0.
-    if (isUpscale) {
-        sharpness = Math.max(sharpness, 25); // Minimum 25% de netteté pour "inventer" du détail
+    // Auto-netteté forcée pour l'upscaling
+    if (isUpscale && sharpness === 0) {
+        sharpness = 30; 
     }
 
-    if (sharpness > 0) {
-      applySharpen(exportCtx, exportCvs.width, exportCvs.height, sharpness);
-    }
+    // On récupère l'image de base avec la netteté appliquée
+    const baseImage = sharpness > 0 ? getSharpenedBase(sharpness) : currentImage;
+
+    // On projette cette image très nette sur le canevas géant de 16K
+    exportCtx.drawImage(baseImage, -w/2, -h/2, w, h);
+    exportCtx.restore();
 
     try {
         const link = document.createElement('a');
-        link.download = `photostudio_${sel}.png`;
-        link.href = exportCvs.toDataURL('image/png', 1.0); // Force qualité max
+        link.download = `photostudio_export.png`;
+        link.href = exportCvs.toDataURL('image/png', 1.0); 
         link.click();
     } catch (e) {
         alert("Erreur: L'image est trop géante (16K?) pour la mémoire de votre navigateur.");
